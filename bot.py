@@ -113,41 +113,61 @@ async def choose_doctor(callback: CallbackQuery):
     parts = callback.data.split(":")
 
     doctor_id = parts[1]
-    usluga_id = int(parts[2])   # 👈 ВОТ ЭТО НОВОЕ
+    usluga_id = int(parts[2])
 
-    data = load_all_data(usluga_id)  # 👈 ТЕПЕРЬ ПЕРЕДАЁШЬ
+    data = load_all_data(usluga_id)
 
-    tickets = data["tickets"]
-    workers = {w["id"]: w for w in data["workers"]}
-    branchs = {b["id"]: b for b in data["branchs"]}
+    tickets = data.get("tickets", [])
+    workers = {w["id"]: w for w in data.get("workers", [])}
+    branchs = {b["id"]: b for b in data.get("branchs", [])}
 
-    # фильтр врача
+    # фильтр по врачу
     if doctor_id != "all":
         tickets = [t for t in tickets if t["worker_id"] == int(doctor_id)]
 
-    text = ""
+    # ❌ НЕТ ТАЛОНОВ → ПОКАЗЫВАЕМ КНОПКУ
+    if not tickets:
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🔔 Сообщить о появлении",
+                    callback_data=f"subscribe:{doctor_id}:{usluga_id}"
+                )
+            ]
+        ])
 
-    for t in tickets[:30]:
-        worker = workers.get(t["worker_id"])
-        branch = branchs.get(t["branch"])
+        await callback.message.answer(
+            "❌ Сейчас талонов нет\n\n"
+            "Нажми кнопку, и я сообщу, когда появятся 👇",
+            reply_markup=kb
+        )
+        return
+
+    grouped = {}
+
+    for t in tickets:
+        wid = t["worker_id"]
+        grouped.setdefault(wid, []).append(t)
+
+    for wid, doctor_tickets in grouped.items():
+        worker = workers.get(wid)
 
         if not worker:
             continue
 
         name = f"{worker['surname']} {worker['name']} {worker['father']}"
-        time = format_ticket_time(t["start"])
-        address = branch["name"] if branch else "?????"
 
-        text += f"👨‍⚕️ {name}\n"
-        text += f"\n"
-        text += f"🗓 {time}\n"
-        text += f"\n"
-        text += f"🏥 {address}\n"
-        text += "──────────────\n"
-        InlineKeyboardButton(text="🔔 Подписаться", callback_data=f"subscribe:{doctor_id}:{usluga_id}")
-        text += "──────────────\n"
+        text = f"🧑‍⚕️ {name}\n\n"
 
-    await callback.message.answer(text or "Нет талонов")
+        for t in doctor_tickets[:10]:
+            branch = branchs.get(t["branch"])
+            time = format_ticket_time(t["start"])
+            address = branch["name"] if branch else "???"
+
+            text += f"🗓 {time}\n"
+            text += f"🏥 {address}\n\n"
+
+        await callback.message.answer(text)
 
 SUBSCRIPTIONS = []
 
