@@ -144,8 +144,59 @@ async def choose_doctor(callback: CallbackQuery):
         text += f"\n"
         text += f"🏥 {address}\n"
         text += "──────────────\n"
+        InlineKeyboardButton(text="🔔 Подписаться", callback_data=f"subscribe:{doctor_id}:{usluga_id}")
+        text += "──────────────\n"
 
     await callback.message.answer(text or "Нет талонов")
+
+SUBSCRIPTIONS = []
+
+@dp.callback_query(F.data.startswith("subscribe"))
+async def subscribe(callback: CallbackQuery):
+    parts = callback.data.split(":")
+
+    doctor_id = parts[1]
+    usluga_id = int(parts[2])
+
+    SUBSCRIPTIONS.append({
+        "user_id": callback.from_user.id,
+        "usluga_id": usluga_id,
+        "doctor_id": doctor_id,
+        "last_seen": set()
+    })
+
+    await callback.message.answer("✅ Подписка оформлена")
+
+async def watcher():
+    while True:
+        print("checking subscriptions...")
+
+        for sub in SUBSCRIPTIONS:
+            data = load_all_data(sub["usluga_id"])
+
+            tickets = data.get("tickets", [])
+
+            if sub["doctor_id"] != "all":
+                tickets = [
+                    t for t in tickets
+                    if t["worker_id"] == int(sub["doctor_id"])
+                ]
+
+            current_ids = {t["id"] for t in tickets}
+
+            new_ids = current_ids - sub["last_seen"]
+
+            if new_ids:
+                sub["last_seen"] = current_ids
+
+                for t in tickets:
+                    if t["id"] in new_ids:
+                        await bot.send_message(
+                            sub["user_id"],
+                            f"🎉 Новый талон!\n{t['start']}"
+                        )
+
+        await asyncio.sleep(60)
 
 if __name__ == "__main__":
     asyncio.run(main())
