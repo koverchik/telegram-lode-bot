@@ -216,7 +216,7 @@ async def watcher():
                             f"🎉 Новый талон!\n{t['start']}"
                         )
 
-        await asyncio.sleep(60)
+        await asyncio.sleep(600)
 
 if __name__ == "__main__":
     asyncio.run(main())
